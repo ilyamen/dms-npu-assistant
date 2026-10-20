@@ -1,0 +1,24 @@
+{
+    "id": "npuAssistant",
+    "name": "NPU Assistant",
+    "description": "Local AI assistant on the Intel NPU: ask from the launcher with !question or a plain question, keep talking in a chat slideout with history, and send a question to the CPU with ⚡ when the computer is idle",
+    "version": "0.1.0",
+    "license": "MIT",
+    "author": "ilyamen",
+    "type": "composite",
+    "capabilities": ["launcher", "daemon"],
+    "components": {
+        "daemon": "./AssistantService.qml",
+        "launcher": "./AssistantLauncher.qml"
+    },
+    "settings": "./AssistantSettings.qml",
+    "startupCheck": "./StartupCheck.qml",
+    "icon": "neurology",
+    "requires_dms": ">=1.6.3",
+    "dependencies": ["python3", "curl", "wl-clipboard", "openvino-genai"],
+    "permissions": [
+        "settings_read",
+        "settings_write",
+        "process"
+    ]
+}

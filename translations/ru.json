@@ -1,0 +1,89 @@
+{
+    "A launcher query starting with this is always sent to the assistant. The ? prefix is taken by the built-in settings search.": {
+        "A launcher query starting with this is always sent to the assistant. The ? prefix is taken by the built-in settings search.": "Запрос в лаунчере, начинающийся с этого, всегда уходит ассистенту. Префикс ? занят встроенным поиском по настройкам."
+    },
+    "Also answer launcher queries that look like a question (ending with ? or starting with how, what, why…), not only ones with the prefix": {
+        "Also answer launcher queries that look like a question (ending with ? or starting with how, what, why…), not only ones with the prefix": "Отвечать и на запросы, похожие на вопрос (с ? в конце или начинающиеся с «как», «что», «почему»…), а не только на запросы с префиксом"
+    },
+    "Answer obvious questions": {
+        "Answer obvious questions": "Отвечать на явные вопросы"
+    },
+    "Ask anything. Answers run on the NPU; ⚡ sends the question to the CPU, which is faster while the computer is idle.": {
+        "Ask anything. Answers run on the NPU; ⚡ sends the question to the CPU, which is faster while the computer is idle.": "Спросите что угодно. Ответы считает NPU; ⚡ отправляет вопрос на процессор — он быстрее, пока компьютер простаивает."
+    },
+    "Ask on the CPU (EAGLE-3, faster when idle)": {
+        "Ask on the CPU (EAGLE-3, faster when idle)": "Спросить на процессоре (EAGLE-3, быстрее в простое)"
+    },
+    "Assistant": {
+        "Assistant": "Ассистент"
+    },
+    "Back to chat": {
+        "Back to chat": "Назад к чату"
+    },
+    "Boost is unavailable": {
+        "Boost is unavailable": "Ускорение недоступно"
+    },
+    "Delete": {
+        "Delete": "Удалить"
+    },
+    "Enter — continue in chat": {
+        "Enter — continue in chat": "Enter — продолжить в чате"
+    },
+    "History": {
+        "History": "История"
+    },
+    "How long the launcher waits after the last keystroke before sending the question to the NPU": {
+        "How long the launcher waits after the last keystroke before sending the question to the NPU": "Сколько лаунчер ждёт после последнего нажатия, прежде чем отправить вопрос на NPU"
+    },
+    "Images are not supported yet": {
+        "Images are not supported yet": "Картинки пока не поддерживаются"
+    },
+    "Launcher prefix": {
+        "Launcher prefix": "Префикс в лаунчере"
+    },
+    "loading": {
+        "loading": "загружается"
+    },
+    "Loading the model…": {
+        "Loading the model…": "Загружаю модель…"
+    },
+    "Message (Ctrl+Enter — ⚡ CPU)": {
+        "Message (Ctrl+Enter — ⚡ CPU)": "Сообщение (Ctrl+Enter — ⚡ процессор)"
+    },
+    "min": {
+        "min": "мин"
+    },
+    "Model, CPU boost cores, keep-warm time and memory/CPU thresholds are set in ~/.config/npu-assistant/config.json (see README). Open the chat with: dms ipc call npuAssistant toggle": {
+        "Model, CPU boost cores, keep-warm time and memory/CPU thresholds are set in ~/.config/npu-assistant/config.json (see README). Open the chat with: dms ipc call npuAssistant toggle": "Модель, ядра для ускорения, время прогрева и пороги памяти/загрузки задаются в ~/.config/npu-assistant/config.json (см. README). Открыть чат: dms ipc call npuAssistant toggle"
+    },
+    "New chat": {
+        "New chat": "Новый чат"
+    },
+    "No chats yet": {
+        "No chats yet": "Чатов пока нет"
+    },
+    "ready": {
+        "ready": "готов"
+    },
+    "Send (NPU)": {
+        "Send (NPU)": "Отправить (NPU)"
+    },
+    "Stop": {
+        "Stop": "Остановить"
+    },
+    "The assistant service is not running": {
+        "The assistant service is not running": "Сервис ассистента не запущен"
+    },
+    "The plugin talks to a local backend that runs the model on the NPU. Install it with backend/install.sh from the plugin folder (needs a Python environment with openvino_genai), then re-enable the plugin.": {
+        "The plugin talks to a local backend that runs the model on the NPU. Install it with backend/install.sh from the plugin folder (needs a Python environment with openvino_genai), then re-enable the plugin.": "Плагин работает через локальный бэкенд, который запускает модель на NPU. Установите его скриптом backend/install.sh из папки плагина (нужно Python-окружение с openvino_genai) и снова включите плагин."
+    },
+    "Thinking…": {
+        "Thinking…": "Думаю…"
+    },
+    "Typing pause before asking": {
+        "Typing pause before asking": "Пауза перед отправкой"
+    },
+    "warm": {
+        "warm": "прогрет"
+    }
+}

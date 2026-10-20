@@ -1,0 +1,14 @@
+[Unit]
+Description=Local AI assistant on the Intel NPU (backend of the DMS NPU Assistant plugin)
+After=default.target
+
+[Service]
+WorkingDirectory=@BACKEND@
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@PYTHON@ -m npu_assistant.server
+Restart=on-failure
+RestartSec=5
+Nice=5
+
+[Install]
+WantedBy=default.target
