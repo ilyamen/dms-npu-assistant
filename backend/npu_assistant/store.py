@@ -1,4 +1,5 @@
 """Chat history in SQLite."""
+import json
 import sqlite3
 import threading
 import time
@@ -17,6 +18,8 @@ class Store:
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        if "stats" not in [r[1] for r in self.db.execute("PRAGMA table_info(messages)")]:
+            self.db.execute("ALTER TABLE messages ADD COLUMN stats TEXT")
         self.lock = threading.Lock()
 
     def _q(self, sql, args=()):
@@ -32,14 +35,17 @@ class Store:
     def exists(self, sid):
         return bool(self._q("SELECT 1 FROM sessions WHERE id=?", (sid,)))
 
-    def add(self, sid, role, content, device=None):
+    def add(self, sid, role, content, device=None, stats=None):
         now = time.time()
-        self._q("INSERT INTO messages (session, role, content, device, created) VALUES (?,?,?,?,?)",
-                (sid, role, content, device, now))
+        self._q("INSERT INTO messages (session, role, content, device, created, stats) VALUES (?,?,?,?,?,?)",
+                (sid, role, content, device, now, json.dumps(stats) if stats else None))
         self._q("UPDATE sessions SET updated=? WHERE id=?", (now, sid))
 
     def messages(self, sid):
-        return self._q("SELECT role, content, device, created FROM messages WHERE session=? ORDER BY id", (sid,))
+        rows = self._q("SELECT role, content, device, created, stats FROM messages WHERE session=? ORDER BY id", (sid,))
+        for r in rows:
+            r["stats"] = json.loads(r["stats"]) if r["stats"] else None
+        return rows
 
     def sessions(self, limit=100):
         return self._q("SELECT s.id, s.title, s.updated, COUNT(m.id) AS n FROM sessions s "

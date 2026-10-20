@@ -14,16 +14,27 @@ class Unavailable(Exception):
         self.code = code
 
 
+TRIM_CHARS = 500
+
+
 def build_prompt(tok, system, history, budget):
-    """Chat-template the history, dropping the oldest turns (then cutting the last message) to fit `budget` tokens."""
+    """Chat-template the history to fit `budget` tokens. First shorten earlier answers to their beginning
+    (the model keeps the thread of the talk), then drop the oldest turns, then cut the last message.
+    Returns (prompt, prompt tokens, how many of the last history messages made it in, whether answers were cut)."""
     msgs = [dict(m) for m in history]
+    trimmed = False
     while True:
         p = tok.apply_chat_template([{"role": "system", "content": system}] + msgs, add_generation_prompt=True,
                                     extra_context={"enable_thinking": False})
         n = tok.encode(p).input_ids.shape[1]
         if n <= budget:
-            return p, n
-        if len(msgs) > 1:
+            return p, n, len(msgs), trimmed
+        long = [m for m in msgs[:-1] if m["role"] == "assistant" and len(m["content"]) > TRIM_CHARS]
+        if long:
+            for m in long:
+                m["content"] = m["content"][:TRIM_CHARS] + " …"
+            trimmed = True
+        elif len(msgs) > 1:
             msgs = msgs[2:] if len(msgs) > 2 else msgs[1:]
         else:
             c = msgs[0]["content"]
@@ -103,12 +114,17 @@ class NpuEngine:
             self.busy = True
             try:
                 c = self.cfg
-                prompt, n = build_prompt(self.tok, c["system_prompt"], history, c["npu_max_prompt_len"])
+                prompt, n, kept, trimmed = build_prompt(self.tok, c["system_prompt"], history, c["npu_max_prompt_len"])
                 total = c["npu_max_prompt_len"] + c["npu_min_response_len"]
                 gc = gen_config(self.pipe, c, max(c["npu_min_response_len"], total - n))
-                return run(self.ov, self.pipe, prompt, gc, on_text, cancelled)
+                res = run(self.ov, self.pipe, prompt, gc, on_text, cancelled)
+                res.update(ctx=n, ctx_max=c["npu_max_prompt_len"], kept=kept, trimmed=trimmed)
+                return res
             finally:
                 self.busy = False
+
+
+CPU_PROMPT_BUDGET = 4096
 
 
 def _cpu_worker(conn, cfg):
@@ -132,7 +148,7 @@ def _cpu_worker(conn, cfg):
         if msg[0] != "gen":
             continue
         _, system, history = msg
-        prompt, _ = build_prompt(tok, system, history, 4096)
+        prompt, n, kept, trimmed = build_prompt(tok, system, history, CPU_PROMPT_BUDGET)
         gc = gen_config(pipe, cfg, int(cfg["cpu_max_new_tokens"]), greedy=True)
         gc.num_assistant_tokens = int(cfg["cpu_assistant_tokens"])
         stop = []
@@ -145,6 +161,7 @@ def _cpu_worker(conn, cfg):
         try:
             res = run(ov_genai, pipe, prompt, gc, lambda s: conn.send(("tok", s)), cancelled)
             res.pop("text")
+            res.update(ctx=n, ctx_max=CPU_PROMPT_BUDGET, kept=kept, trimmed=trimmed)
             conn.send(("done", res))
         except Exception as e:
             conn.send(("error", str(e)))

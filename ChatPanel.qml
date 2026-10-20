@@ -10,6 +10,15 @@ Item {
     property var slideout: null
     property bool showHistory: false
 
+    // Index of the oldest message the model still saw when it gave the latest answer
+    readonly property int firstRemembered: {
+        const m = service.messages;
+        for (let i = m.length - 1; i >= 0; i--)
+            if (m[i].stats && m[i].stats.kept !== undefined)
+                return Math.max(0, i - m[i].stats.kept);
+        return 0;
+    }
+
 
     function tr(text) {
         return I18n.trFor("npuAssistant", text);
@@ -182,20 +191,57 @@ Item {
         spacing: Theme.spacingM
         clip: true
         model: root.service.messages
-        onCountChanged: Qt.callLater(positionViewAtEnd)
-        onContentHeightChanged: if (root.service.generating)
-            Qt.callLater(positionViewAtEnd)
+
+        // Follow the answer while it grows, unless the user scrolled up to read. Jumping straight to the
+        // end (no positionViewAtEnd re-layout of the whole list) keeps the text from twitching.
+        property bool stick: true
+        property bool autoScrolling: false
+        function toEnd() {
+            if (!stick || contentHeight <= height)
+                return;
+            autoScrolling = true;
+            contentY = originY + contentHeight - height;
+            autoScrolling = false;
+        }
+        onContentYChanged: if (!autoScrolling)
+            stick = contentY >= originY + contentHeight - height - 24
+        onCountChanged: {
+            stick = true;
+            Qt.callLater(positionViewAtEnd);
+        }
+        onContentHeightChanged: toEnd()
+        onHeightChanged: toEnd()
 
         delegate: Item {
+            id: msg
             required property var modelData
+            required property int index
             readonly property bool mine: modelData.role === "user"
+            readonly property bool live: !!modelData.pending && index === messageList.count - 1
+            readonly property bool forgotten: index < root.firstRemembered
+            readonly property string content: live ? root.service.streamText : (modelData.content || "")
             width: messageList.width
-            height: bubble.height + (meta.visible ? meta.height + 2 : 0)
+            height: divider.height + bubble.height + (meta.visible ? meta.height + 2 : 0)
+            opacity: forgotten ? 0.45 : 1
+
+            StyledText {
+                id: divider
+                width: parent.width
+                readonly property bool shown: msg.index === root.firstRemembered && msg.index > 0
+                height: shown ? implicitHeight + Theme.spacingS : 0
+                visible: shown
+                horizontalAlignment: Text.AlignHCenter
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.surfaceVariantText
+                text: "↑ " + root.tr("the model no longer sees the messages above")
+            }
 
             StyledRect {
                 id: bubble
+                anchors.top: divider.bottom
                 anchors.right: mine ? parent.right : undefined
-                width: Math.min(parent.width * (mine ? 0.85 : 1), body.implicitWidth + 2 * Theme.spacingM)
+                // Assistant bubbles are full width, so a growing answer only grows down, never sideways
+                width: mine ? Math.min(parent.width * 0.85, body.implicitWidth + 2 * Theme.spacingM) : parent.width
                 height: body.height + 2 * Theme.spacingS
                 radius: Theme.cornerRadius
                 color: mine ? Theme.primaryContainer : Theme.surfaceContainer
@@ -204,7 +250,7 @@ Item {
                     id: body
                     x: Theme.spacingM
                     y: Theme.spacingS
-                    width: Math.min(implicitWidth, messageList.width * (mine ? 0.85 : 1) - 2 * Theme.spacingM)
+                    width: mine ? Math.min(implicitWidth, messageList.width * 0.85 - 2 * Theme.spacingM) : bubble.width - 2 * Theme.spacingM
                     readOnly: true
                     selectByMouse: true
                     wrapMode: TextEdit.Wrap
@@ -213,7 +259,7 @@ Item {
                     selectionColor: Theme.primary
                     font.pixelSize: Theme.fontSizeMedium
                     font.family: Theme.fontFamily ?? font.family
-                    text: modelData.error ? (modelData.content ? modelData.content + "\n\n" : "") + modelData.error : (modelData.content || (modelData.loading ? root.tr("Loading the model…") : "…"))
+                    text: modelData.error ? (msg.content ? msg.content + "\n\n" : "") + modelData.error : (msg.content || (modelData.loading ? root.tr("Loading the model…") : "…"))
                 }
             }
 
@@ -226,7 +272,7 @@ Item {
                 visible: !mine && !!modelData.device
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.surfaceVariantText
-                text: (modelData.device === "cpu" ? "⚡ CPU" : "NPU") + (modelData.stats ? " · " + modelData.stats.tps + " tok/s · " + modelData.stats.tokens + " tok" : "")
+                text: (modelData.device === "cpu" ? "⚡ CPU" : "NPU") + (modelData.stats ? " · " + modelData.stats.tps + " tok/s · " + modelData.stats.tokens + " tok" + (modelData.stats.ctx ? " · " + root.tr("context") + " " + modelData.stats.ctx + "/" + modelData.stats.ctx_max : "") + (modelData.stats.trimmed ? " · " + root.tr("earlier answers shortened") : "") : "")
             }
         }
 

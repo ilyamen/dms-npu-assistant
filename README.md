@@ -22,7 +22,7 @@ or bind that to a key in niri. `dms ipc call npuAssistant ask "…"` and `… bo
 
 The plugin talks to a small Python service, `npu-assistant`, running as a systemd user service on `127.0.0.1:8737`. It needs nothing beyond the standard library and OpenVINO GenAI.
 
-- **NPU**: always loaded. The prompt is limited to 1024 tokens and the response gets at least 256; older turns are dropped to fit. Sampling: Qwen's non-thinking settings with `presence_penalty` 1.5. The service runs the patched NPU compiler through `LD_LIBRARY_PATH`, with its own compile cache.
+- **NPU**: always loaded. The prompt is limited to 1024 tokens and the response gets at least 256. To fit, earlier answers are first cut to their beginning, then the oldest turns are dropped. Each answer in the chat shows how much of the context it used, and the chat marks the messages the model no longer sees. Every request is built from its own chat's history, so chats don't affect each other. There is no KV cache between turns: each question re-reads the history it keeps. Sampling: Qwen's non-thinking settings with `presence_penalty` 1.5. The service runs the patched NPU compiler through `LD_LIBRARY_PATH`, with its own compile cache.
 - **CPU boost**: loaded on demand, greedy decoding (repetition penalties break EAGLE draft validation in GenAI).
 
 | | |

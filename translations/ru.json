@@ -23,8 +23,14 @@
     "Boost is unavailable": {
         "Boost is unavailable": "Ускорение недоступно"
     },
+    "context": {
+        "context": "контекст"
+    },
     "Delete": {
         "Delete": "Удалить"
+    },
+    "earlier answers shortened": {
+        "earlier answers shortened": "старые ответы сокращены"
     },
     "Enter — continue in chat": {
         "Enter — continue in chat": "Enter — продолжить в чате"
@@ -73,6 +79,9 @@
     },
     "The assistant service is not running": {
         "The assistant service is not running": "Сервис ассистента не запущен"
+    },
+    "the model no longer sees the messages above": {
+        "the model no longer sees the messages above": "модель уже не видит сообщения выше"
     },
     "The plugin talks to a local backend that runs the model on the NPU. Install it with backend/install.sh from the plugin folder (needs a Python environment with openvino_genai), then re-enable the plugin.": {
         "The plugin talks to a local backend that runs the model on the NPU. Install it with backend/install.sh from the plugin folder (needs a Python environment with openvino_genai), then re-enable the plugin.": "Плагин работает через локальный бэкенд, который запускает модель на NPU. Установите его скриптом backend/install.sh из папки плагина (нужно Python-окружение с openvino_genai) и снова включите плагин."

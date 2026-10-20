@@ -239,17 +239,21 @@ PluginComponent {
     property string sessionId: ""
     property var messages: []           // {role, content, device, stats, error}
     property var chatStream: null
+    property int streamSeq: 0           // bumped when the chat changes, so a stopping stream can't touch the new one
+    property string streamText: ""      // the answer being generated; kept apart so the list isn't rebuilt per token
     readonly property bool generating: chatStream !== null
     property var sessions: []
 
     function newChat() {
         stopGenerating();
+        streamSeq++;
         sessionId = "";
         messages = [];
     }
 
     function openSession(sid) {
         stopGenerating();
+        streamSeq++;
         sessionId = sid;
         api("GET", "/history/" + sid, undefined, data => {
             if (data && sid === sessionId)
@@ -293,8 +297,12 @@ PluginComponent {
             "device": device,
             "pending": true
         });
+        streamText = "";
         messages = msgs;
+        const seq = ++streamSeq;
         const update = patch => {
+            if (seq !== streamSeq)
+                return;
             const m = messages.slice();
             m[m.length - 1] = Object.assign({}, m[m.length - 1], patch);
             messages = m;
@@ -306,22 +314,24 @@ PluginComponent {
         }, (name, d) => {
             if (name === "session")
                 sessionId = d.id;
-            else if (name === "token")
-                update({
-                    "content": messages[messages.length - 1].content + d.t
-                });
+            else if (name === "token") {
+                if (seq === streamSeq)
+                    streamText += d.t;
+            }
             else if (name === "status")
                 update({
                     "loading": d.state === "loading"
                 });
             else if (name === "done")
                 update({
+                    "content": streamText,
                     "pending": false,
                     "loading": false,
                     "stats": d
                 });
             else if (name === "error")
                 update({
+                    "content": streamText,
                     "pending": false,
                     "loading": false,
                     "error": errorText(d)
@@ -329,6 +339,7 @@ PluginComponent {
         }, () => {
             chatStream = null;
             update({
+                "content": streamText,
                 "pending": false,
                 "loading": false
             });
@@ -418,6 +429,12 @@ PluginComponent {
             root.newChat();
             root.showPanel();
             root.send(question, "npu");
+            return "ok";
+        }
+
+        function open(session: string): string {
+            root.openSession(session);
+            root.showPanel();
             return "ok";
         }
 

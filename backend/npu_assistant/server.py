@@ -8,7 +8,11 @@ DELETE /history/<id>
 POST /history                   {messages: [{role, content, device?}]} -> {session}   (import a launcher answer)
 POST /cpu/unload                drop the boost now
 
-SSE events: session {id} | status {state} | token {t} | done {tokens, tps, ttft, device} | error {code, message}
+SSE events: session {id} | status {state} | token {t} | error {code, message}
+  | done {tokens, tps, ttft, device, ctx, ctx_max, kept, trimmed}: ctx = prompt tokens of ctx_max, kept = how many of
+    the last history messages (this question included) fit, older ones were dropped; trimmed = earlier answers were
+    cut to their beginning to fit. Each request is built from its own
+    session's history, so chats don't affect each other.
 """
 import json
 import os
@@ -165,9 +169,9 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             return emit("error", {"code": "internal", "message": str(e)})
         answer = res.pop("text", None) or "".join(parts)
-        if save and answer.strip():
-            app.store.add(sid, "assistant", answer.strip(), device)
         res["device"] = device
+        if save and answer.strip():
+            app.store.add(sid, "assistant", answer.strip(), device, res)
         res["cancelled"] = bool(gone)
         emit("done", res)
         print(f"{device}: {res['tokens']} tok, {res['tps']} tok/s, ttft {res['ttft']}s"
