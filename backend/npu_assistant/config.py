@@ -14,9 +14,11 @@ DEFAULTS = {
     # NPU: patched npu_compiler (CMX fix, see docs/), no EAGLE head
     "npu_lib_dir": "/var/lib/ollama-models/npu-dev/cid-rel",
     "npu_cache_dir": "/var/lib/ollama-models/npu/.npucache-cidrel",
-    "npu_max_prompt_len": 1024,
+    # 4096 costs almost nothing on short chats (22.4 vs 23 tok/s); a full one decodes at ~15 tok/s
+    "npu_max_prompt_len": 4096,
     "npu_min_response_len": 256,
     "npu_prefill_chunk": 256,
+    "npu_prefix_caching": True,   # reuse the KV of the history between turns: 1800-token history 5.4 s -> 0.8 s
     # CPU boost: same model + Russian EAGLE-3 head
     "cpu_draft_model": "/var/lib/ollama-models/npu/build/eagle3-qwen3-4b-2507-ru",
     "cpu_assistant_tokens": 3,

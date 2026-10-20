@@ -95,7 +95,8 @@ class NpuEngine:
             self.pipe = ov_genai.LLMPipeline(c["model"], "NPU", MAX_PROMPT_LEN=c["npu_max_prompt_len"],
                                              MIN_RESPONSE_LEN=c["npu_min_response_len"],
                                              NPUW_LLM_PREFILL_CHUNK_SIZE=c["npu_prefill_chunk"],
-                                             GENERATE_HINT="BEST_PERF", CACHE_DIR=c["npu_cache_dir"])
+                                             GENERATE_HINT="BEST_PERF", CACHE_DIR=c["npu_cache_dir"],
+                                             **({"NPUW_LLM_ENABLE_PREFIX_CACHING": "YES"} if c["npu_prefix_caching"] else {}))
             self.tok = self.pipe.get_tokenizer()
             self.state = "ready"
             print(f"npu: loaded in {time.time() - t:.1f}s", flush=True)
