@@ -14,7 +14,7 @@
     "settings": "./AssistantSettings.qml",
     "startupCheck": "./StartupCheck.qml",
     "icon": "neurology",
-    "requires_dms": ">=1.6.3",
+    "requires_dms": ">=2.0.0",
     "dependencies": ["python3", "curl", "wl-clipboard", "openvino-genai"],
     "permissions": [
         "settings_read",

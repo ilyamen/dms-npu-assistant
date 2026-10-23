@@ -394,7 +394,7 @@ PluginComponent {
     Variants {
         model: Quickshell.screens
 
-        delegate: DankSlideout {
+        delegate: DSlideout {
             id: chatSlideout
             title: root.tr("Assistant")
             slideoutWidth: 520

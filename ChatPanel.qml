@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Common
+import qs.DCommon.Widgets
 import qs.Services
 import qs.Widgets
 
@@ -63,7 +64,7 @@ Item {
         anchors.rightMargin: Theme.spacingL
         spacing: Theme.spacingS
 
-        DankIcon {
+        DIcon {
             anchors.verticalCenter: parent.verticalCenter
             name: "circle"
             size: 10
@@ -90,7 +91,7 @@ Item {
             }
         }
 
-        DankActionButton {
+        DActionButton {
             iconName: root.showHistory ? "chat" : "history"
             tooltipText: root.showHistory ? root.tr("Back to chat") : root.tr("History")
             onClicked: {
@@ -100,7 +101,7 @@ Item {
             }
         }
 
-        DankActionButton {
+        DActionButton {
             iconName: "add_comment"
             tooltipText: root.tr("New chat")
             onClicked: {
@@ -112,7 +113,7 @@ Item {
     }
 
     // History list
-    DankListView {
+    DListView {
         id: historyList
         visible: root.showHistory
         anchors.top: toolbar.bottom
@@ -160,7 +161,7 @@ Item {
                 }
             }
 
-            DankActionButton {
+            DActionButton {
                 id: delBtn
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
@@ -180,7 +181,7 @@ Item {
     }
 
     // Messages
-    DankListView {
+    DListView {
         id: messageList
         visible: !root.showHistory
         anchors.top: toolbar.bottom
@@ -317,7 +318,7 @@ Item {
         anchors.margins: Theme.spacingL
         spacing: Theme.spacingS
 
-        DankTextField {
+        DTextField {
             id: input
             width: parent.width - 2 * (40 + Theme.spacingS)
             placeholderText: root.tr("Message (Ctrl+Enter — ⚡ CPU)")
@@ -325,7 +326,7 @@ Item {
             onAccepted: root.submit("npu")
         }
 
-        DankActionButton {
+        DActionButton {
             anchors.verticalCenter: parent.verticalCenter
             buttonSize: 40
             iconName: "bolt"
@@ -335,7 +336,7 @@ Item {
             onClicked: root.submit("cpu")
         }
 
-        DankActionButton {
+        DActionButton {
             anchors.verticalCenter: parent.verticalCenter
             buttonSize: 40
             iconName: root.service.generating ? "stop" : "send"
