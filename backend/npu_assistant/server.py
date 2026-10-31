@@ -43,6 +43,7 @@ class App:
             try:
                 self.cpu.tick()
                 self.npu.tick()
+                self.strata.tick()
             except Exception as e:
                 print(f"monitor: {e}", flush=True)
 
