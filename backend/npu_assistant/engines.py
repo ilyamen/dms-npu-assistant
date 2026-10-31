@@ -333,9 +333,6 @@ class StrataEngine:
         self.busy = False
         self.loading = False
         self.last_used = 0.0
-        self.loaded_since = None    # when we first saw the model loaded (a load without any request counts as activity)
-        self.next_check = 0.0
-        self.last_unload = None
 
     def _req(self, path, body=None, timeout=1.0):
         h = {"Content-Type": "application/json"}
@@ -357,8 +354,7 @@ class StrataEngine:
             return {"online": False, "state": "off", "models": [], "busy": False}
         state = "ready" if h.get("loaded") else "loading" if self.loading else "off"
         return {"online": True, "state": state, "models": models, "model": h.get("model"),
-                "max_context": h.get("max_context"), "busy": self.busy,
-                "last_unload": self.last_unload}
+                "max_context": h.get("max_context"), "busy": self.busy}
 
     def _post(self, path, timeout):
         try:
@@ -383,34 +379,7 @@ class StrataEngine:
     def unload(self, reason):
         if self.busy:
             return
-        self.last_unload = reason
         print(f"strata: unload ({reason}) -> {self._post('/unload', 60)}", flush=True)
-
-    def tick(self):
-        """Called every few seconds; every 30 s frees the model when no client (us, the web chat, opencode…)
-        has asked anything for strata_idle_unload_min minutes. Strata itself never unloads on its own."""
-        idle_min = self.cfg["strata_idle_unload_min"]
-        now = time.time()
-        if not idle_min or now < self.next_check or self.busy or self.loading:
-            return
-        self.next_check = now + 30
-        try:
-            if not self._get("/health").get("loaded"):
-                self.loaded_since = None
-                return
-            m = self._get("/metrics", timeout=2)
-        except Exception:
-            return
-        if self.loaded_since is None:
-            self.loaded_since = now
-        live = m.get("live") or {}
-        if live.get("state") not in (None, "idle") or live.get("queued"):
-            return
-        last = max([r.get("time", 0) + (r.get("duration_s") or 0) for r in m.get("requests") or []] + [0])
-        last = max(last, self.loaded_since, self.last_used)
-        if now - last > idle_min * 60:
-            self.unload("idle")
-            self.loaded_since = None
 
     def generate(self, history, on_text, cancelled, on_wait=None, model=None):
         st = self.status()

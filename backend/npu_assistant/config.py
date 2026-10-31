@@ -39,7 +39,6 @@ DEFAULTS = {
     "strata_api_key": "",
     "strata_thinking": False,     # Qwen thinks in English and slowly; off gives answers in ~1 s
     "strata_max_tokens": 8192,
-    "strata_idle_unload_min": 30, # unload Strata's model after this long without requests from any client (0 = never)
     # Qwen3 non-thinking sampling (as in ~/ai/npu/tools)
     "temperature": 0.7,
     "top_p": 0.8,
