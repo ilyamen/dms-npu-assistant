@@ -80,7 +80,7 @@ Item {
             name: "circle"
             size: 10
             filled: true
-            color: !root.service.online ? Theme.error : root.service.status.npu.state === "ready" ? Theme.primary : Theme.warning
+            color: !root.service.online ? Theme.error : root.service.status.npu.state === "ready" ? Theme.primary : root.service.status.npu.state === "off" ? Theme.surfaceVariantText : Theme.warning
         }
 
         StyledText {
@@ -93,7 +93,7 @@ Item {
                 const s = root.service.status;
                 if (!s)
                     return root.tr("The assistant service is not running");
-                let t = "NPU · " + (s.npu.state === "ready" ? root.tr("ready") : s.npu.state);
+                let t = "NPU · " + (s.npu.state === "ready" ? root.tr("ready") : s.npu.state === "off" ? root.tr("asleep, loads with the first question") : s.npu.state === "loading" ? root.tr("loading") : s.npu.state);
                 if (s.cpu.state === "ready")
                     t += "  ·  ⚡ " + root.tr("warm") + (s.cpu.warm_left_s > 0 ? " " + Math.ceil(s.cpu.warm_left_s / 60) + " " + root.tr("min") : "");
                 else if (s.cpu.state === "loading")

@@ -18,7 +18,10 @@ DEFAULTS = {
     "npu_max_prompt_len": 4096,
     "npu_min_response_len": 256,
     "npu_prefill_chunk": 256,
-    "npu_prefix_caching": True,   # reuse the KV of the history between turns: 1800-token history 5.4 s -> 0.8 s
+    "npu_prefix_caching": True,
+    "npu_keep_warm_min": 60,      # unload the NPU model after this long without questions (loads again in ~3 s)
+    "npu_mem_load_min_gb": 6.0,   # MemAvailable needed to load it (~4 GB)
+    "npu_mem_unload_gb": 5.0,     # unload it right away below this, so Strata and other big jobs get the RAM   # reuse the KV of the history between turns: 1800-token history 5.4 s -> 0.8 s
     # CPU boost: same model + Russian EAGLE-3 head
     "cpu_draft_model": "/var/lib/ollama-models/npu/build/eagle3-qwen3-4b-2507-ru",
     "cpu_assistant_tokens": 3,

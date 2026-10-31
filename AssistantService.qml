@@ -142,6 +142,11 @@ PluginComponent {
         return s;
     }
 
+    // A chat is starting: load the NPU model now (it is unloaded after an idle hour or on low memory)
+    function warm() {
+        api("POST", "/warm", {}, null);
+    }
+
     // ---- launcher answer ------------------------------------------------------------
     property string lq: ""
     property string lanswer: ""
@@ -246,6 +251,8 @@ PluginComponent {
     function launcherAsk(q) {
         if (q === lq)
             return;
+        if (!lq)
+            warm();
         if (lstream)
             lstream.stop();
         lstream = null;
@@ -480,6 +487,7 @@ PluginComponent {
         const focused = screenName || (CompositorService.getFocusedScreen()?.name ?? "");
         const target = slideouts.find(s => s?.modelData?.name === focused) ?? slideouts[0];
         grabKeys = true;
+        warm();
         for (const s of slideouts)
             if (s && s !== target && s.isVisible)
                 s.hide();

@@ -1,4 +1,5 @@
-"""NPU (always loaded, in-process) and CPU boost (on demand, separate niced process) engines."""
+"""NPU (in-process, loaded while chats are going on) and CPU boost (on demand, separate niced process) engines."""
+import gc
 import multiprocessing as mp
 import os
 import threading
@@ -77,12 +78,31 @@ def run(ov_genai, pipe, prompt, gc, on_text, cancelled):
 
 
 class NpuEngine:
+    """Loaded when a chat starts (warm) or on the first question, unloaded after the keep-warm time or when
+    memory runs short, so a bigger model (Strata) gets the RAM first. A load takes ~2-3 s from the cache."""
+
     def __init__(self, cfg):
         self.cfg = cfg
-        self.state, self.error = "loading", None
+        self.state, self.error = "off", None   # off | loading | ready | error
         self.ready = threading.Event()
-        self.lock = threading.Lock()
+        self.lock = threading.Lock()      # one generation at a time
+        self.plock = threading.RLock()    # load/unload
         self.busy = False
+        self.pipe = self.tok = None
+        self.last_used = 0.0
+        self.last_unload = None
+
+    def warm(self):
+        """Start loading in the background unless loaded; returns at once."""
+        with self.plock:
+            if self.state in ("ready", "loading"):
+                self.last_used = time.time()
+                return
+            if sysmon.mem_available_gb() < self.cfg["npu_mem_load_min_gb"]:
+                return
+            self.state, self.error = "loading", None
+            self.ready.clear()
+            self.last_used = time.time()
         threading.Thread(target=self._load, daemon=True).start()
 
     def _load(self):
@@ -101,28 +121,56 @@ class NpuEngine:
             self.state = "ready"
             print(f"npu: loaded in {time.time() - t:.1f}s", flush=True)
         except Exception as e:
+            self.pipe = self.tok = None
             self.state, self.error = "error", str(e)
             print(f"npu: load failed: {e}", flush=True)
         self.ready.set()
 
+    def unload(self, reason):
+        with self.plock:
+            if self.state != "ready" or self.busy:
+                return
+            self.pipe = self.tok = None
+            gc.collect()
+            self.state, self.last_unload = "off", reason
+            self.ready.clear()
+            print(f"npu: unloaded ({reason})", flush=True)
+
+    def tick(self):
+        """Called every few seconds: free the NPU model on low memory or after the keep-warm time."""
+        if self.state != "ready" or self.busy:
+            return
+        if sysmon.mem_available_gb() < self.cfg["npu_mem_unload_gb"]:
+            self.unload("low_memory")
+        elif time.time() - self.last_used > self.cfg["npu_keep_warm_min"] * 60:
+            self.unload("idle")
+
     def generate(self, history, on_text, cancelled, on_wait=None):
-        if not self.ready.is_set() and on_wait:
-            on_wait("loading")
-        self.ready.wait()
-        if self.state != "ready":
-            raise Unavailable("npu_error", self.error)
         with self.lock:
             self.busy = True
             try:
+                if self.state in ("off", "error"):
+                    if sysmon.mem_available_gb() < self.cfg["npu_mem_load_min_gb"]:
+                        raise Unavailable("low_memory", f"мало свободной памяти для NPU: "
+                                                        f"{sysmon.mem_available_gb():.1f} ГБ < {self.cfg['npu_mem_load_min_gb']} ГБ")
+                    self.warm()
+                if not self.ready.is_set() and on_wait:
+                    on_wait("loading")
+                if self.state not in ("loading", "ready"):
+                    raise Unavailable("npu_error", self.error or "NPU model is not loaded")
+                self.ready.wait()
+                if self.state != "ready":
+                    raise Unavailable("npu_error", self.error)
                 c = self.cfg
                 prompt, n, kept, trimmed = build_prompt(self.tok, c["system_prompt"], history, c["npu_max_prompt_len"])
                 total = c["npu_max_prompt_len"] + c["npu_min_response_len"]
-                gc = gen_config(self.pipe, c, max(c["npu_min_response_len"], total - n))
-                res = run(self.ov, self.pipe, prompt, gc, on_text, cancelled)
+                gc_ = gen_config(self.pipe, c, max(c["npu_min_response_len"], total - n))
+                res = run(self.ov, self.pipe, prompt, gc_, on_text, cancelled)
                 res.update(ctx=n, ctx_max=c["npu_max_prompt_len"], kept=kept, trimmed=trimmed)
                 return res
             finally:
                 self.busy = False
+                self.last_used = time.time()
 
 
 CPU_PROMPT_BUDGET = 4096

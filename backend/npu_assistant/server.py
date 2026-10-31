@@ -1,6 +1,7 @@
 """HTTP API on 127.0.0.1 with SSE streaming.
 
 GET  /status                    devices, boost availability + reason
+POST /warm                      start loading the NPU model (a chat is starting); /npu/unload frees it
 POST /chat                      {message, session?, device: npu|cpu, save?: true, image?: {data, mime}} -> SSE
 GET  /history                   session list
 GET  /history/<id>              messages of a session
@@ -39,6 +40,7 @@ class App:
             time.sleep(2)
             try:
                 self.cpu.tick()
+                self.npu.tick()
             except Exception as e:
                 print(f"monitor: {e}", flush=True)
 
@@ -48,7 +50,8 @@ class App:
         if self.cpu.state == "ready" and not self.cpu.busy:
             warm_left = max(0, int(self.cfg["cpu_keep_warm_min"] * 60 - (time.time() - self.cpu.last_used)))
         return {
-            "npu": {"state": self.npu.state, "busy": self.npu.busy, "error": self.npu.error},
+            "npu": {"state": self.npu.state, "busy": self.npu.busy, "error": self.npu.error,
+                    "last_unload": self.npu.last_unload},
             "cpu": {"state": self.cpu.state, "busy": self.cpu.busy, "available": ok, "reason": code,
                     "message": why, "warm_left_s": warm_left, "last_unload": self.cpu.last_unload},
             "mem_available_gb": round(sysmon.mem_available_gb(), 1),
@@ -112,6 +115,12 @@ class Handler(BaseHTTPRequestHandler):
             for m in msgs:
                 self.app.store.add(sid, m["role"], m["content"], m.get("device"))
             return self._json({"session": sid})
+        if p == "/warm":
+            self.app.npu.warm()
+            return self._json({"state": self.app.npu.state})
+        if p == "/npu/unload":
+            self.app.npu.unload("manual")
+            return self._json({"ok": True})
         if p == "/cpu/unload":
             self.app.cpu.unload("manual")
             return self._json({"ok": True})

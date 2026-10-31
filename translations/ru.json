@@ -112,5 +112,8 @@
     },
     "Distance of the tab from the top of the screen": {
         "Distance of the tab from the top of the screen": "Отступ язычка от верха экрана"
+    },
+    "asleep, loads with the first question": {
+        "asleep, loads with the first question": "спит, загрузится с первым вопросом"
     }
 }

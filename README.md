@@ -22,7 +22,7 @@ or bind that to a key in niri. `dms ipc call npuAssistant ask "…"` and `… bo
 
 The plugin talks to a small Python service, `npu-assistant`, running as a systemd user service on `127.0.0.1:8737`. It needs nothing beyond the standard library and OpenVINO GenAI.
 
-- **NPU**: always loaded. The chat history gets up to 4096 tokens and the response at least 256. A longer limit costs almost nothing on short chats (22.4 vs 23 tok/s); a full 4096-token history decodes at ~15 tok/s. To fit, earlier answers are first cut to their beginning, then the oldest turns are dropped. Each answer in the chat shows how much of the context it used, and the chat marks the messages the model no longer sees. Every request is built from its own chat's history, so chats don't affect each other. NPUW prefix caching keeps the KV of the history between turns, so only the last answer and the new question are read again: with an 1800-token history the first word comes in 0.8 s instead of 5.4 s. Sampling: Qwen's non-thinking settings with `presence_penalty` 1.5. The service runs the patched NPU compiler through `LD_LIBRARY_PATH`, with its own compile cache.
+- **NPU**: loaded when a chat starts (opening the chat or typing a question in the launcher) and on the first question otherwise; a load takes about 2 s from the compile cache. It is unloaded after an hour without questions (`npu_keep_warm_min`) and at once when free memory drops below `npu_mem_unload_gb` (5 GB), so a bigger model such as Strata gets the RAM first; it then loads again with the next question. The model takes about 4 GB of RAM while loaded. The chat history gets up to 4096 tokens and the response at least 256. A longer limit costs almost nothing on short chats (22.4 vs 23 tok/s); a full 4096-token history decodes at ~15 tok/s. To fit, earlier answers are first cut to their beginning, then the oldest turns are dropped. Each answer in the chat shows how much of the context it used, and the chat marks the messages the model no longer sees. Every request is built from its own chat's history, so chats don't affect each other. NPUW prefix caching keeps the KV of the history between turns, so only the last answer and the new question are read again: with an 1800-token history the first word comes in 0.8 s instead of 5.4 s. Sampling: Qwen's non-thinking settings with `presence_penalty` 1.5. The service runs the patched NPU compiler through `LD_LIBRARY_PATH`, with its own compile cache.
 - **CPU boost**: loaded on demand, greedy decoding (repetition penalties break EAGLE draft validation in GenAI).
 
 | | |
@@ -39,6 +39,7 @@ Settings live in `~/.config/npu-assistant/config.json`. Every key is optional; s
 {
     "cpu_cores": "0-7",
     "cpu_nice": 10,
+    "npu_keep_warm_min": 60,
     "cpu_keep_warm_min": 10,
     "cpu_busy_psi": 25,
     "cpu_busy_load": 0.6,
