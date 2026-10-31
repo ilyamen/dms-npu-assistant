@@ -47,9 +47,32 @@ QtObject {
         return text.replace(/\s+/g, " ").trim();
     }
 
+    // Names that open the chat itself, so it can be found by typing its name
+    readonly property var openWords: ["ассистент", "помощник", "чат", "нейронка", "npu", "нпу", "assistant", "chat", "ai"]
+
+    function openItem(query) {
+        const low = (query || "").trim().toLowerCase();
+        // A short query must match a whole name, a longer one may be the start of a name
+        if (!openWords.some(w => low === w || (low.length >= 3 && w.startsWith(low))))
+            return null;
+        return {
+            "name": tr("Open the assistant"),
+            "icon": "material:neurology",
+            "comment": tr("Chat on the NPU · also the tab on the right screen edge"),
+            "action": "open",
+            "categories": [tr("Assistant")],
+            "_preScored": 900
+        };
+    }
+
     function getItems(query) {
+        if (!service)
+            return [];
+        const open = openItem(query);
+        if (open)
+            return [open];
         const q = question(query);
-        if (!q || !service)
+        if (!q)
             return [];
         service.launcherAsk(q);
         let name, comment, icon = "material:neurology";
@@ -80,7 +103,11 @@ QtObject {
     }
 
     function executeItem(item) {
-        if (service)
+        if (!service)
+            return;
+        if (item?.action === "open")
+            service.showPanel();
+        else
             service.continueInChat();
     }
 }

@@ -26,8 +26,19 @@ Item {
     }
 
     function submit(device) {
-        if (service.send(input.text, device))
+        if (service.send(input.text, device)) {
             input.text = "";
+            // Asked from elsewhere (pointer not on the chat): hand the keyboard back while the answer comes
+            if (!hover.hovered)
+                service.grabKeys = false;
+        }
+    }
+
+    // Leaving the chat with nothing typed hands the keyboard back to the other windows
+    HoverHandler {
+        id: hover
+        onHoveredChanged: if (!hovered && input.text.trim() === "")
+            root.service.grabKeys = false
     }
 
     // The content is created after the slideout reveals itself, so focus the field once it is on screen

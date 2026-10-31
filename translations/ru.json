@@ -94,5 +94,23 @@
     },
     "warm": {
         "warm": "прогрет"
+    },
+    "Open the assistant": {
+        "Open the assistant": "Открыть ассистента"
+    },
+    "Chat on the NPU · also the tab on the right screen edge": {
+        "Chat on the NPU · also the tab on the right screen edge": "Чат на NPU · также язычок у правого края экрана"
+    },
+    "Tab on the screen edge": {
+        "Tab on the screen edge": "Язычок у края экрана"
+    },
+    "While the chat is hidden, a small tab on the right screen edge opens it with a click": {
+        "While the chat is hidden, a small tab on the right screen edge opens it with a click": "Пока чат скрыт, маленький язычок у правого края экрана открывает его по клику"
+    },
+    "Tab position": {
+        "Tab position": "Положение язычка"
+    },
+    "Distance of the tab from the top of the screen": {
+        "Distance of the tab from the top of the screen": "Отступ язычка от верха экрана"
     }
 }

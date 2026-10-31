@@ -37,6 +37,23 @@ PluginSettings {
         unit: "ms"
     }
 
+    ToggleSetting {
+        settingKey: "edgeTab"
+        label: root.tr("Tab on the screen edge")
+        description: root.tr("While the chat is hidden, a small tab on the right screen edge opens it with a click")
+        defaultValue: true
+    }
+
+    SliderSetting {
+        settingKey: "edgeTabPos"
+        label: root.tr("Tab position")
+        description: root.tr("Distance of the tab from the top of the screen")
+        defaultValue: 40
+        minimum: 5
+        maximum: 90
+        unit: "%"
+    }
+
     StyledText {
         width: parent.width
         wrapMode: Text.Wrap

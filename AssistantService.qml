@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Common
+import qs.DCommon.Widgets
 import qs.Services
 import qs.Widgets
 import qs.Modules.Plugins
@@ -155,11 +156,17 @@ PluginComponent {
         interval: root.debounceMs
         onTriggered: {
             const q = root.lq;
-            root.lstream = root.startStream({
+            let s = null;
+            s = root.startStream({
                 "message": q,
                 "device": "npu",
                 "save": false
             }, (name, d) => {
+                // Taken over by the chat (Enter while the answer was still coming)
+                if (root.adopted && root.adopted.stream === s) {
+                    root.adoptedEvent(name, d);
+                    return;
+                }
                 if (q !== root.lq)
                     return;
                 if (name === "token")
@@ -172,8 +179,68 @@ PluginComponent {
                     root.lerror = d;
                 }
                 root.launcherChanged();
-            }, null);
+            }, () => {
+                if (root.adopted && root.adopted.stream === s)
+                    root.adoptedEnded();
+            });
+            root.lstream = s;
         }
+    }
+
+    // A launcher answer still being generated, moved into the chat instead of being asked again
+    property var adopted: null          // {stream, q, seq}
+
+    function adoptedEvent(name, d) {
+        const a = adopted;
+        if (a.seq !== streamSeq)
+            return;
+        if (name === "token") {
+            streamText += d.t;
+            return;
+        }
+        if (name !== "done" && name !== "error")
+            return;
+        const m = messages.slice();
+        m[m.length - 1] = Object.assign({}, m[m.length - 1], {
+            "content": streamText,
+            "pending": false,
+            "stats": name === "done" ? d : null,
+            "error": name === "error" ? errorText(d) : undefined
+        });
+        messages = m;
+        if (name === "done" && streamText.trim() !== "")
+            api("POST", "/history", {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": a.q,
+                        "device": "npu"
+                    },
+                    {
+                        "role": "assistant",
+                        "content": streamText.trim(),
+                        "device": "npu"
+                    }
+                ]
+            }, data => {
+                if (data && data.session && a.seq === streamSeq)
+                    sessionId = data.session;
+            });
+    }
+
+    function adoptedEnded() {
+        const a = adopted;
+        adopted = null;
+        chatStream = null;
+        if (a.seq === streamSeq && messages.length && messages[messages.length - 1].pending) {
+            const m = messages.slice();
+            m[m.length - 1] = Object.assign({}, m[m.length - 1], {
+                "content": streamText,
+                "pending": false
+            });
+            messages = m;
+        }
+        refreshStatus();
     }
 
     function launcherAsk(q) {
@@ -190,13 +257,41 @@ PluginComponent {
         launcherDebounce.restart();
     }
 
-    // Enter on the launcher item: keep the finished answer as a chat, or ask again in the chat.
+    // Enter on the launcher item: keep the finished answer as a chat, let the chat take over an answer
+    // still being generated, or ask in the chat if the launcher had not asked yet.
     function continueInChat() {
         const q = lq, a = lanswer, done = ldone && !lerror && a.trim() !== "";
-        if (lstream)
-            lstream.stop();
         launcherDebounce.stop();
         lq = "";
+        if (lstream && !ldone && !generating) {
+            const s = lstream;
+            lstream = null;
+            newChat();
+            streamText = a;
+            messages = [
+                {
+                    "role": "user",
+                    "content": q
+                },
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "device": "npu",
+                    "pending": true
+                }
+            ];
+            adopted = {
+                "stream": s,
+                "q": q,
+                "seq": streamSeq
+            };
+            chatStream = s;
+            showPanel();
+            return;
+        }
+        if (lstream)
+            lstream.stop();
+        lstream = null;
         if (done) {
             api("POST", "/history", {
                 "messages": [
@@ -371,10 +466,20 @@ PluginComponent {
     // ---- slideout -------------------------------------------------------------------
     property bool panelOpen: false
     property var slideouts: []
+    // Exclusive keyboard only right after opening; released when the user turns to other windows
+    property bool grabKeys: false
 
-    function showPanel() {
-        const focused = CompositorService.getFocusedScreen()?.name ?? "";
+    Connections {
+        target: NiriService
+        function onLastFocusedWindowIdChanged() {
+            root.grabKeys = false;
+        }
+    }
+
+    function showPanel(screenName) {
+        const focused = screenName || (CompositorService.getFocusedScreen()?.name ?? "");
         const target = slideouts.find(s => s?.modelData?.name === focused) ?? slideouts[0];
+        grabKeys = true;
         for (const s of slideouts)
             if (s && s !== target && s.isVisible)
                 s.hide();
@@ -400,10 +505,10 @@ PluginComponent {
             slideoutWidth: 520
             expandable: true
             expandedWidthValue: 900
-            // niri gives an on-demand layer the keyboard only after a click and takes it back when the
-            // layer drops to on-demand, so the chat holds the keyboard while open, like the launcher;
-            // Escape or ✕ closes it
-            WlrLayershell.keyboardFocus: isVisible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            // niri gives an on-demand layer the keyboard only after a click, so the chat grabs it when it
+            // opens (type right away) and drops to on-demand once the user turns to other windows; a click
+            // in the chat brings the keyboard back, and the chat stays open until Escape or ✕
+            WlrLayershell.keyboardFocus: !isVisible ? WlrKeyboardFocus.None : root.grabKeys ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand
             onIsVisibleChanged: root.panelOpen = root.slideouts.some(s => s?.isVisible)
             Component.onCompleted: root.slideouts = root.slideouts.concat([chatSlideout])
             Component.onDestruction: root.slideouts = root.slideouts.filter(s => s !== chatSlideout)
@@ -412,6 +517,67 @@ PluginComponent {
                 ChatPanel {
                     service: root
                     slideout: chatSlideout
+                }
+            }
+        }
+    }
+
+    // Tab on the right screen edge while the chat is hidden: the chat slides away to it and comes back
+    // with a click, so it can be found without remembering the shortcut
+    Variants {
+        model: (pluginData.edgeTab ?? true) ? Quickshell.screens : []
+
+        delegate: PanelWindow {
+            id: edgeTab
+            required property var modelData
+            screen: modelData
+            visible: !root.panelOpen
+            color: "transparent"
+            anchors.top: true
+            anchors.right: true
+            margins.top: Math.round((modelData?.height ?? 800) * (pluginData.edgeTabPos ?? 40) / 100)
+            implicitWidth: 30
+            implicitHeight: 56
+            WlrLayershell.namespace: "dms:npu-assistant-tab"
+            WlrLayershell.layer: WlrLayershell.Top
+            WlrLayershell.exclusiveZone: -1
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            mask: Region {
+                item: tabBody
+            }
+
+            StyledRect {
+                id: tabBody
+                anchors.right: parent.right
+                width: tabMouse.containsMouse ? 30 : 20
+                height: parent.height
+                topLeftRadius: 16
+                bottomLeftRadius: 16
+                topRightRadius: 0
+                bottomRightRadius: 0
+                color: tabMouse.containsMouse ? Theme.surfaceContainerHigh : Theme.surfaceContainer
+                opacity: tabMouse.containsMouse ? 1 : 0.8
+
+                Behavior on width {
+                    NumberAnimation {
+                        duration: 120
+                        easing.type: Easing.OutCubic
+                    }
+                }
+
+                DIcon {
+                    anchors.centerIn: parent
+                    name: tabMouse.containsMouse ? "chevron_left" : "neurology"
+                    size: 16
+                    color: root.generating ? Theme.warning : Theme.primary
+                }
+
+                MouseArea {
+                    id: tabMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.showPanel(edgeTab.modelData?.name ?? "")
                 }
             }
         }
