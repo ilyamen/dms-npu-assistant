@@ -65,7 +65,7 @@ Item {
         }
     }
 
-    // Toolbar: status, history, new chat
+    // Toolbar: status, model, unload, history, new chat
     Row {
         id: toolbar
         anchors.top: parent.top
@@ -80,11 +80,14 @@ Item {
             name: "circle"
             size: 10
             filled: true
-            color: !root.service.online ? Theme.error : root.service.status.npu.state === "ready" ? Theme.primary : root.service.status.npu.state === "off" ? Theme.surfaceVariantText : Theme.warning
+            color: {
+                const st = root.service.modelState;
+                return st === "down" || st === "error" ? Theme.error : st === "ready" ? Theme.primary : st === "off" ? Theme.surfaceVariantText : Theme.warning;
+            }
         }
 
         StyledText {
-            width: parent.width - 10 - 2 * 32 - 3 * Theme.spacingS
+            width: parent.width - 10 - 3 * 32 - modelPicker.width - 5 * Theme.spacingS
             anchors.verticalCenter: parent.verticalCenter
             font.pixelSize: Theme.fontSizeSmall
             color: Theme.surfaceVariantText
@@ -93,13 +96,41 @@ Item {
                 const s = root.service.status;
                 if (!s)
                     return root.tr("The assistant service is not running");
-                let t = "NPU · " + (s.npu.state === "ready" ? root.tr("ready") : s.npu.state === "off" ? root.tr("asleep, loads with the first question") : s.npu.state === "loading" ? root.tr("loading") : s.npu.state);
+                const st = root.service.modelState;
+                let t = st === "down" ? root.tr("Strata is not running") : st === "ready" ? root.tr("ready") : st === "off" ? root.tr("asleep, loads with the first question") : st === "loading" ? root.tr("loading") : (s.npu.error || st);
+                if (root.service.useStrata)
+                    return t;
                 if (s.cpu.state === "ready")
                     t += "  ·  ⚡ " + root.tr("warm") + (s.cpu.warm_left_s > 0 ? " " + Math.ceil(s.cpu.warm_left_s / 60) + " " + root.tr("min") : "");
                 else if (s.cpu.state === "loading")
                     t += "  ·  ⚡ " + root.tr("loading");
                 return t;
             }
+        }
+
+        DDropdown {
+            id: modelPicker
+            anchors.verticalCenter: parent.verticalCenter
+            compactMode: true
+            dropdownWidth: 170
+            popupWidth: 260
+            alignPopupRight: true
+            options: root.service.modelChoices.map(c => c.label)
+            currentValue: (root.service.modelChoices.find(c => c.id === root.service.selectedModel) ?? root.service.modelChoices[0]).label
+            onValueChanged: value => {
+                const c = root.service.modelChoices.find(c => c.label === value);
+                if (c && c.id !== root.service.selectedModel)
+                    root.service.setModel(c.id);
+            }
+        }
+
+        DActionButton {
+            readonly property bool can: root.service.modelState === "ready" && !root.service.generating
+            iconName: "eject"
+            opacity: can ? 1 : 0.4
+            tooltipText: root.tr("Unload the model and free the memory")
+            onClicked: if (can)
+                root.service.unloadModel()
         }
 
         DActionButton {
@@ -284,7 +315,7 @@ Item {
                 visible: !mine && !!modelData.device
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.surfaceVariantText
-                text: (modelData.device === "cpu" ? "⚡ CPU" : "NPU") + (modelData.stats ? " · " + modelData.stats.tps + " tok/s · " + modelData.stats.tokens + " tok" + (modelData.stats.ctx ? " · " + root.tr("context") + " " + modelData.stats.ctx + "/" + modelData.stats.ctx_max : "") + (modelData.stats.trimmed ? " · " + root.tr("earlier answers shortened") : "") : "")
+                text: (modelData.device === "cpu" ? "⚡ CPU" : modelData.device === "strata" ? "Strata" : "NPU") + (modelData.stats ? " · " + modelData.stats.tps + " tok/s · " + modelData.stats.tokens + " tok" + (modelData.stats.ctx ? " · " + root.tr("context") + " " + modelData.stats.ctx + "/" + modelData.stats.ctx_max : "") + (modelData.stats.trimmed ? " · " + root.tr("earlier answers shortened") : "") : "")
             }
         }
 
@@ -314,7 +345,7 @@ Item {
                 root.slideout?.hide();
                 event.accepted = true;
             } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) {
-                root.submit("cpu");
+                root.submit(root.service.useStrata ? "npu" : "cpu");
                 event.accepted = true;
             }
         }
@@ -331,14 +362,23 @@ Item {
 
         DTextField {
             id: input
-            width: parent.width - 2 * (40 + Theme.spacingS)
-            placeholderText: root.tr("Message (Ctrl+Enter — ⚡ CPU)")
+            width: parent.width - (root.service.useStrata ? 1 : 2) * (40 + Theme.spacingS)
+            placeholderText: root.service.useStrata ? root.tr("Message") : root.tr("Message (Ctrl+Enter — ⚡ CPU)")
             keyForwardTargets: [pasteWatcher]
             onAccepted: root.submit("npu")
+            // Load the model once a question is really being typed, not just when the chat opens
+            property bool typed: false
+            onTextChanged: {
+                const long = text.trim().length > 3;
+                if (long && !typed)
+                    root.service.warm();
+                typed = long;
+            }
         }
 
         DActionButton {
             anchors.verticalCenter: parent.verticalCenter
+            visible: !root.service.useStrata
             buttonSize: 40
             iconName: "bolt"
             iconColor: root.service.boostAvailable ? Theme.primary : Theme.surfaceVariantText

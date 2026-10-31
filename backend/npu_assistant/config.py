@@ -34,6 +34,11 @@ DEFAULTS = {
     "cpu_busy_load": 0.6,         # loadavg1 / ncpu
     "mem_load_min_gb": 6.0,       # MemAvailable needed to load the boost
     "mem_unload_gb": 3.0,         # unload the boost right away below this
+    # Strata (big model on the Radeon, OpenAI API); the chat lists what it serves
+    "strata_url": "http://127.0.0.1:8080",
+    "strata_api_key": "",
+    "strata_thinking": False,     # Qwen thinks in English and slowly; off gives answers in ~1 s
+    "strata_max_tokens": 8192,
     # Qwen3 non-thinking sampling (as in ~/ai/npu/tools)
     "temperature": 0.7,
     "top_p": 0.8,

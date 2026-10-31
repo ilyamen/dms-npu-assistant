@@ -29,6 +29,42 @@ PluginComponent {
     readonly property bool boostAvailable: online && status.cpu.available
     readonly property string boostReason: !online ? tr("The assistant service is not running") : (status.cpu.message || "")
 
+    // ---- model choice: "npu" (with the ⚡ CPU boost) or "strata:<model id>" -----------
+    property string selectedModel: PluginService.loadPluginData(pid, "model", "npu") || "npu"
+    readonly property bool useStrata: selectedModel.startsWith("strata:")
+    readonly property string strataModel: useStrata ? selectedModel.slice(7) : ""
+    // The selected model's state: off | loading | ready | error; Strata not running counts as "down"
+    readonly property string modelState: !online ? "down" : useStrata ? (status.strata.online ? status.strata.state : "down") : status.npu.state
+    readonly property var modelChoices: {
+        const out = [{
+                "id": "npu",
+                "label": "NPU · Qwen3-4B"
+            }];
+        for (const m of (status?.strata?.models ?? []))
+            out.push({
+                "id": "strata:" + m,
+                "label": "Strata · " + m
+            });
+        if (useStrata && !out.some(c => c.id === selectedModel))
+            out.push({
+                "id": selectedModel,
+                "label": "Strata · " + strataModel
+            });
+        return out;
+    }
+
+    function setModel(id) {
+        selectedModel = id;
+        PluginService.savePluginData(pid, "model", id);
+        refreshStatus();
+    }
+
+    function unloadModel() {
+        api("POST", "/unload", {
+            "device": useStrata ? "strata" : "npu"
+        }, () => refreshStatus());
+    }
+
     function refreshStatus() {
         Proc.runCommand(pid + ".status", ["curl", "-s", "--max-time", "2", baseUrl + "/status"], (out, code) => {
             try {
@@ -142,9 +178,12 @@ PluginComponent {
         return s;
     }
 
-    // A chat is starting: load the NPU model now (it is unloaded after an idle hour or on low memory)
-    function warm() {
-        api("POST", "/warm", {}, null);
+    // A question is being typed: load the model now (the NPU one is unloaded after idle minutes or on low
+    // memory; Strata keeps its model until the unload button)
+    function warm(device) {
+        api("POST", "/warm", {
+            "device": device || (useStrata ? "strata" : "npu")
+        }, () => refreshStatus());
     }
 
     // ---- launcher answer ------------------------------------------------------------
@@ -252,7 +291,7 @@ PluginComponent {
         if (q === lq)
             return;
         if (!lq)
-            warm();
+            warm("npu");
         if (lstream)
             lstream.stop();
         lstream = null;
@@ -384,6 +423,8 @@ PluginComponent {
         text = (text || "").trim();
         if (!text || generating)
             return false;
+        if (device !== "cpu" && useStrata)
+            device = "strata";
         if (device === "cpu" && !boostAvailable) {
             ToastService.showWarning(tr("Boost is unavailable"), boostReason);
             return false;
@@ -412,6 +453,7 @@ PluginComponent {
         chatStream = startStream({
             "message": text,
             "device": device,
+            "model": device === "strata" ? strataModel : undefined,
             "session": sessionId || null
         }, (name, d) => {
             if (name === "session")
@@ -487,7 +529,6 @@ PluginComponent {
         const focused = screenName || (CompositorService.getFocusedScreen()?.name ?? "");
         const target = slideouts.find(s => s?.modelData?.name === focused) ?? slideouts[0];
         grabKeys = true;
-        warm();
         for (const s of slideouts)
             if (s && s !== target && s.isVisible)
                 s.hide();

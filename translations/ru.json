@@ -115,5 +115,14 @@
     },
     "asleep, loads with the first question": {
         "asleep, loads with the first question": "спит, загрузится с первым вопросом"
+    },
+    "Strata is not running": {
+        "Strata is not running": "Strata не запущена"
+    },
+    "Unload the model and free the memory": {
+        "Unload the model and free the memory": "Выгрузить модель и освободить память"
+    },
+    "Message": {
+        "Message": "Сообщение"
     }
 }

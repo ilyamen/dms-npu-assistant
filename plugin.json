@@ -2,7 +2,7 @@
     "id": "npuAssistant",
     "name": "NPU Assistant",
     "description": "Local AI assistant on the Intel NPU: ask from the launcher with !question or a plain question, keep talking in a chat slideout with history that slides away to a tab on the screen edge, and send a question to the CPU with ⚡ when the computer is idle",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "license": "MIT",
     "author": "ilyamen",
     "type": "composite",

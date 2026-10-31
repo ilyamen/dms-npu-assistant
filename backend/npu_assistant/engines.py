@@ -1,9 +1,13 @@
-"""NPU (in-process, loaded while chats are going on) and CPU boost (on demand, separate niced process) engines."""
+"""NPU (in-process, loaded while chats are going on), CPU boost (on demand, separate niced process) and Strata
+(the big model on the graphics card, reached over its OpenAI API) engines."""
 import gc
+import json
 import multiprocessing as mp
 import os
 import threading
 import time
+import urllib.error
+import urllib.request
 
 from . import sysmon
 from .config import parse_cores
@@ -314,6 +318,115 @@ class CpuEngine:
                         raise Unavailable("cpu_error", payload)
             except (EOFError, OSError, BrokenPipeError):
                 raise Unavailable("cpu_unloaded", f"буст выгружен: {self.last_unload or 'процесс завершился'}")
+            finally:
+                self.busy = False
+                self.last_used = time.time()
+
+
+class StrataEngine:
+    """Strata's OpenAI-compatible server (the big model on the graphics card). It keeps its model loaded
+    itself; we only ask it to load (a chat is starting) or unload (the button), and read its state."""
+
+    def __init__(self, cfg):
+        self.cfg = cfg
+        self.lock = threading.Lock()
+        self.busy = False
+        self.loading = False
+        self.last_used = 0.0
+
+    def _req(self, path, body=None, timeout=1.0):
+        h = {"Content-Type": "application/json"}
+        if self.cfg["strata_api_key"]:
+            h["Authorization"] = "Bearer " + self.cfg["strata_api_key"]
+        data = None if body is None else json.dumps(body).encode()
+        return urllib.request.urlopen(urllib.request.Request(self.cfg["strata_url"].rstrip("/") + path, data, h),
+                                      timeout=timeout)
+
+    def _get(self, path, timeout=0.5):
+        with self._req(path, timeout=timeout) as r:
+            return json.load(r)
+
+    def status(self):
+        try:
+            h = self._get("/health")
+            models = [m["id"] for m in self._get("/v1/models").get("data", [])]
+        except Exception:
+            return {"online": False, "state": "off", "models": [], "busy": False}
+        state = "ready" if h.get("loaded") else "loading" if self.loading else "off"
+        return {"online": True, "state": state, "models": models, "model": h.get("model"),
+                "max_context": h.get("max_context"), "busy": self.busy}
+
+    def _post(self, path, timeout):
+        try:
+            with self._req(path, {}, timeout) as r:
+                return json.load(r).get("status")
+        except Exception as e:
+            print(f"strata {path}: {e}", flush=True)
+
+    def warm(self):
+        """Ask Strata to load its model in the background unless it is loaded (it takes a while)."""
+        if self.loading or self.status()["state"] != "off":
+            return
+        self.loading = True
+
+        def load():
+            try:
+                print(f"strata: load -> {self._post('/load', 600)}", flush=True)
+            finally:
+                self.loading = False
+        threading.Thread(target=load, daemon=True).start()
+
+    def unload(self, reason):
+        if self.busy:
+            return
+        print(f"strata: unload ({reason}) -> {self._post('/unload', 60)}", flush=True)
+
+    def generate(self, history, on_text, cancelled, on_wait=None, model=None):
+        st = self.status()
+        if not st["online"]:
+            raise Unavailable("strata_down", "Strata не запущена (strata launch --preset max128k)")
+        with self.lock:
+            self.busy = True
+            try:
+                if st["state"] != "ready" and on_wait:
+                    on_wait("loading")   # the request itself loads the model
+                c = self.cfg
+                body = {"model": model or st["model"], "stream": True, "max_tokens": c["strata_max_tokens"],
+                        "stream_options": {"include_usage": True},
+                        "chat_template_kwargs": {"enable_thinking": bool(c["strata_thinking"])},
+                        "messages": [{"role": "system", "content": c["system_prompt"]}] + history}
+                t0 = time.perf_counter()
+                first = None
+                usage = {}
+                text = []
+                with self._req("/v1/chat/completions", body, timeout=900) as r:
+                    for raw in r:
+                        if cancelled():
+                            break
+                        line = raw.decode().strip()
+                        if not line.startswith("data: ") or line == "data: [DONE]":
+                            continue
+                        d = json.loads(line[6:])
+                        if d.get("error"):
+                            raise Unavailable("strata_error", d["error"].get("message", str(d["error"])))
+                        usage = d.get("usage") or usage
+                        for ch in d.get("choices", []):
+                            s = (ch.get("delta") or {}).get("content")
+                            if s:
+                                if first is None:
+                                    first = time.perf_counter()
+                                text.append(s)
+                                on_text(s)
+                dt = time.perf_counter() - t0
+                ttft = (first or time.perf_counter()) - t0
+                n = usage.get("completion_tokens") or len(text)
+                return {"tokens": n, "ttft": round(ttft, 3), "tps": round(n / max(dt - ttft, 1e-3), 1),
+                        "text": "".join(text), "ctx": usage.get("prompt_tokens"), "ctx_max": st.get("max_context"),
+                        "kept": len(history), "trimmed": False, "model": body["model"]}
+            except urllib.error.HTTPError as e:
+                raise Unavailable("strata_error", f"Strata: HTTP {e.code} {e.read()[:300].decode(errors='replace')}")
+            except (urllib.error.URLError, OSError) as e:
+                raise Unavailable("strata_down", f"Strata: {e}")
             finally:
                 self.busy = False
                 self.last_used = time.time()

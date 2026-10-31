@@ -1,8 +1,9 @@
 """HTTP API on 127.0.0.1 with SSE streaming.
 
 GET  /status                    devices, boost availability + reason
-POST /warm                      start loading the NPU model (a chat is starting); /npu/unload frees it
-POST /chat                      {message, session?, device: npu|cpu, save?: true, image?: {data, mime}} -> SSE
+POST /warm                      {device?: npu|strata} start loading that model (a chat is starting)
+POST /unload                    {device: npu|strata} free that model now (npu also drops the CPU boost)
+POST /chat                      {message, session?, device: npu|cpu|strata, model?, save?: true, image?: {data, mime}} -> SSE
 GET  /history                   session list
 GET  /history/<id>              messages of a session
 DELETE /history/<id>
@@ -23,7 +24,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import config, store, sysmon, vision
-from .engines import CpuEngine, NpuEngine, Unavailable
+from .engines import CpuEngine, NpuEngine, StrataEngine, Unavailable
 
 
 class App:
@@ -33,6 +34,7 @@ class App:
         self.store = store.Store(os.path.join(config.DATA_DIR, "history.db"))
         self.npu = NpuEngine(cfg)
         self.cpu = CpuEngine(cfg)
+        self.strata = StrataEngine(cfg)
         threading.Thread(target=self._monitor, daemon=True).start()
 
     def _monitor(self):
@@ -54,6 +56,7 @@ class App:
                     "last_unload": self.npu.last_unload},
             "cpu": {"state": self.cpu.state, "busy": self.cpu.busy, "available": ok, "reason": code,
                     "message": why, "warm_left_s": warm_left, "last_unload": self.cpu.last_unload},
+            "strata": self.strata.status(),
             "mem_available_gb": round(sysmon.mem_available_gb(), 1),
             "cpu_psi_avg10": sysmon.cpu_psi_avg10(),
             "load_ratio": round(sysmon.load_ratio(), 2),
@@ -116,8 +119,18 @@ class Handler(BaseHTTPRequestHandler):
                 self.app.store.add(sid, m["role"], m["content"], m.get("device"))
             return self._json({"session": sid})
         if p == "/warm":
+            if req.get("device") == "strata":
+                self.app.strata.warm()
+                return self._json({"ok": True})
             self.app.npu.warm()
             return self._json({"state": self.app.npu.state})
+        if p == "/unload":
+            if req.get("device") == "strata":
+                self.app.strata.unload("manual")
+            else:
+                self.app.npu.unload("manual")
+                self.app.cpu.unload("manual")
+            return self._json({"ok": True})
         if p == "/npu/unload":
             self.app.npu.unload("manual")
             return self._json({"ok": True})
@@ -156,7 +169,7 @@ class Handler(BaseHTTPRequestHandler):
                 return emit("error", {"code": "image_unsupported", "message": str(e)})
         if not text:
             return emit("error", {"code": "empty", "message": "пустой запрос"})
-        if device not in ("npu", "cpu"):
+        if device not in ("npu", "cpu", "strata"):
             return emit("error", {"code": "bad_device", "message": device})
 
         history = app.store.messages(sid) if sid and app.store.exists(sid) else []
@@ -168,11 +181,12 @@ class Handler(BaseHTTPRequestHandler):
             app.store.add(sid, "user", text, device)
             emit("session", {"id": sid})
 
-        engine = app.npu if device == "npu" else app.cpu
+        engine = {"npu": app.npu, "cpu": app.cpu, "strata": app.strata}[device]
+        kw = {"model": req.get("model")} if device == "strata" else {}
         parts = []
         try:
             res = engine.generate(history, lambda s: (parts.append(s), emit("token", {"t": s})),
-                                  lambda: bool(gone), lambda st: emit("status", {"state": st}))
+                                  lambda: bool(gone), lambda st: emit("status", {"state": st}), **kw)
         except Unavailable as e:
             return emit("error", {"code": e.code, "message": str(e)})
         except Exception as e:
